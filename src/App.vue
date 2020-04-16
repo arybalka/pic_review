@@ -1,7 +1,7 @@
 <template>
 	<div id="app">
 		<ReviewablePicture
-				src="/pictures/02_vegas_0034.jpg"
+				src="./pictures/02_vegas_0034.jpg"
 				:image-width="1200"
 				:image-height="1000"
 		/>
