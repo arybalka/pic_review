@@ -33,6 +33,14 @@
 					}"
 						@click="useTool('rect')"
 				/>
+				<a
+						:class="{
+						'mdi': true,
+						'mdi-shape-polygon-plus': true,
+						'active': active_tool === 'poly',
+					}"
+						@click="useTool('poly')"
+				/>
 			</div>
 
 			<div
@@ -79,6 +87,9 @@
 							v-model="add_note_text"
 					/>
 				</div>
+				<div>
+					<compact-picker v-model="selected_color"></compact-picker>
+				</div>
 				<div class="actions">
 					<button @click="createNote()">Create</button>
 				</div>
@@ -88,7 +99,9 @@
 </template>
 
 <script>
-	const pin_color = '#ff00ee';
+	import {Compact} from 'vue-color';
+
+	const pin_color = '#fa28ff';
 	const hover_color = '#ffe500';
 
 	function renderRect(context, p1, p2, line_width, color) {
@@ -102,6 +115,31 @@
 		context.lineWidth = line_width;
 		context.strokeStyle = color;
 		context.stroke();
+	}
+
+	function renderPoly(context, points, close_figure, start_width, line_width, color) {
+		context.beginPath();
+
+		if (points.length > 1) {
+			points.forEach((point, idx) => {
+				if (idx === 0) {
+					context.moveTo(point.x, point.y);
+				} else {
+					context.lineTo(point.x, point.y);
+				}
+			});
+			if (close_figure) {
+				context.lineTo(points[0].x, points[0].y);
+			}
+		}
+
+		context.lineWidth = line_width;
+		context.strokeStyle = color;
+		context.stroke();
+
+		if (!close_figure && points.length > 0) {
+			renderCircle(context, points[0], start_width, line_width, '#ffffff', color);
+		}
 	}
 
 	function renderCircle(context, center, radius, line_width, color, stroke_color) {
@@ -230,8 +268,43 @@
 		}
 	}
 
+	class PinPoly extends Pin {
+		constructor(points, close_radius, color, author, note, click_callback) {
+			super(color, author, note, click_callback);
+
+			this.base_color = color;
+			this.points = points;
+			this.close_radius = close_radius;
+
+			// console.log("points", JSON.stringify(points));
+		}
+
+		render(context) {
+			super.render();
+			renderPoly(context, this.points, true, 10, 2, this.color);
+		}
+
+		isInside(x, y) {
+			let result = false;
+
+			for (let i = 0, j = this.points.length - 1; i < this.points.length; j = i++) {
+				const p1 = this.points[i], p2 = this.points[j];
+
+				if ((p1.y > y) !== (p2.y > y) && (x < (p2.x - p1.x) * (y - p1.y) / (p2.y - p1.y) + p1.x)) {
+					result = !result;
+				}
+			}
+			return result;
+		}
+	}
+
 	export default {
 		name: "ReviewablePicture",
+
+		components: {
+			'compact-picker': Compact,
+		},
+
 		props: {
 			src: String,
 			imageWidth: {type: Number, default: 0, required: true},
@@ -242,17 +315,24 @@
 			return {
 				context: null,
 				picture: null,
+				selected_color: {hex: pin_color},
 
 				active_tool: 'select',
 				active_pin: null,
 				rect_p1: null,
+				poly_points: null,
+				poly_first_point: null,
 
 				show_add_note: false,
 
 				pins: [
-					new PinPoint(330, 90, 10, pin_color, 'Root', "I don't like the blue sky. Let's make it purple.", this.pinClicked),
+					new PinPoint(330, 90, 10, '#000000', 'Root', "I don't like the blue sky. Let's make it purple.", this.pinClicked),
 					new PinPoint(405, 512, 10, pin_color, 'Root', 'This guy got a cool hat', this.pinClicked),
-					new PinRect({x: 520, y: 120}, {x: 660, y: 420}, pin_color, 'Root', 'Pretty cool skyscraper', this.rectClicked),
+					new PinRect({x: 520, y: 120}, {x: 660, y: 420}, '#FCC400', 'Root', 'Pretty cool skyscraper', this.rectClicked),
+					new PinPoly([
+							{x: 310, y: 410}, {x: 310, y: 385}, {x: 291, y: 367}, {x: 290, y: 330}, {x: 312, y: 304}, {x: 353, y: 304},
+							{x: 372, y: 328}, {x: 371, y: 368}, {x: 353, y: 385}, {x: 353, y: 411}],
+						10, '#ffffff', 'Root', "This is Vegas, babe", this.rectClicked),
 				],
 
 				ask_for_note_resolve: null,
@@ -280,14 +360,12 @@
 				this.render();
 			},
 
-			async render() {
+			render() {
 				if (!this.picture) {
 					return;
 				}
 
-				// this.context.drawImage(this.picture, 0, 0, this.imageWidth, this.imageHeight);
 				const w = this.imageWidth * 0.8, ar = this.picture.height / this.picture.width, h = w * ar;
-				// this.context.drawImage(this.picture, 0, 0, this.imageWidth * 0.8, this.imageHeight * 0.5);
 				this.context.drawImage(this.picture, 0, 0, w, h);
 
 				for (let pin of this.pins) {
@@ -305,7 +383,6 @@
 						for (let pin of this.pins) {
 							if (pin.isInside(evt.offsetX, evt.offsetY)) {
 								pin.onClick(evt.offsetX, evt.offsetY);
-								clicked_poi = true;
 							}
 						}
 
@@ -313,26 +390,13 @@
 						break;
 					case "pin":
 						this.rect_p1 = null;
-						let clicked_poi = false;
-						/*
-							for (let pin of this.pins) {
-								if (pin.isInside(evt.offsetX, evt.offsetY)) {
-									pin.onClick(evt.offsetX, evt.offsetY);
-									clicked_poi = true;
-								}
-							}
-						*/
-						if (clicked_poi) {
-							this.render();
-						} else {
-							let text = await this.askForNote();
+						let text = await this.askForNote();
 
-							this.pins.push(
-								new PinPoint(evt.offsetX, evt.offsetY, 10, pin_color, 'Myself', text, this.pinClicked),
-							);
+						this.pins.push(
+							new PinPoint(evt.offsetX, evt.offsetY, 10, this.selected_color['hex'], 'Myself', text, this.pinClicked),
+						);
 
-							this.render();
-						}
+						this.render();
 
 						break;
 					case 'rect':
@@ -342,12 +406,42 @@
 							let text = await this.askForNote();
 
 							this.pins.push(
-								new PinRect(this.rect_p1, p2, pin_color, 'Myself', text, this.rectClicked),
+								new PinRect(this.rect_p1, p2, this.selected_color['hex'], 'Myself', text, this.rectClicked),
 							);
 
 							this.rect_p1 = null;
 						} else {
 							this.rect_p1 = {x: evt.offsetX, y: evt.offsetY};
+						}
+
+						this.render();
+						break;
+					case 'poly':
+						let p = {x: evt.offsetX, y: evt.offsetY};
+
+						if (this.poly_first_point === null) {
+							this.poly_first_point = p;
+							this.poly_points = [p];
+
+						} else {
+							const dx = this.poly_first_point.x - p.x, dy = this.poly_first_point.y - p.y;
+							const close_radius = 10;
+
+							console.log(dx, dy);
+
+							if (dx * dx + dy * dy <= close_radius * close_radius) {
+								let text = await this.askForNote();
+
+								this.pins.push(
+									new PinPoly(this.poly_points, close_radius, this.selected_color['hex'], 'Myself', text, this.polyClicked),
+								);
+
+								this.poly_first_point = null;
+								this.poly_points = null;
+
+							} else {
+								this.poly_points.push(p);
+							}
 						}
 
 						this.render();
@@ -365,6 +459,14 @@
 					return;
 				}
 
+				if (this.active_tool === 'poly' && this.poly_points !== null) {
+					this.render();
+					// renderPoly(this.context, [...this.poly_points, p], 1, '#ff0000');
+					renderPoly(this.context, [...this.poly_points, p], false, 10, 1, '#ff0000');
+
+					return;
+				}
+
 				if (this.active_tool === 'pin') {
 					this.render();
 					renderCircle(this.context, p, 5, 3, '#ffffff', '#ff0000');
@@ -373,6 +475,9 @@
 					this.render();
 					renderCross(this.context, p, 10, 1, '#ff0000');
 
+				} else if (this.active_tool === 'poly') {
+					this.render();
+					renderCross(this.context, p, 10, 1, '#ff0000');
 				}
 
 				this.activatePins(evt.offsetX, evt.offsetY);
@@ -406,6 +511,9 @@
 			},
 			rectClicked(element, x, y) {
 				console.log("Rect Clicked", this);
+			},
+			polyClicked(element, x, y) {
+				console.log("Poly Clicked", this);
 			},
 			useTool(tool) {
 				this.active_tool = tool;
@@ -635,5 +743,27 @@
 				display: block;
 			}
 		}
+	}
+
+	/deep/ .vc-compact {
+		width: 440px !important;
+		background-color: transparent;
+		box-shadow: none;
+		margin: 15px auto 0;
+		padding: 10px;
+		height: 54px;
+	}
+
+	/deep/ .vc-compact-color-item {
+		border: 1px solid #696969;
+		border: 1px solid #696969;
+	}
+
+	/deep/ .vc-compact-dot {
+		@offset: 3px;
+		top: @offset !important;
+		bottom: @offset !important;
+		left: @offset !important;
+		right: @offset !important;
 	}
 </style>
