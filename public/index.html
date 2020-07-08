@@ -8,6 +8,12 @@
     <title><%= htmlWebpackPlugin.options.title %></title>
   </head>
   <body>
+    <script>
+      window.globs = {
+        api_entry_point: 'http://lama.od.ua/pick_review_mock.php',
+        project_id: 123,
+      };
+    </script>
     <noscript>
       <strong>We're sorry but <%= htmlWebpackPlugin.options.title %> doesn't work properly without JavaScript enabled. Please enable it to continue.</strong>
     </noscript>

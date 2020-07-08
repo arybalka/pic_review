@@ -181,6 +181,9 @@
 		isInside(x, y) {
 		}
 
+		asJSON() {
+		}
+
 		onClick(x, y) {
 			this.click_callback(this, x, y);
 		}
@@ -246,6 +249,18 @@
 			const dx = x - this.x, dy = y - this.y;
 			return dx * dx + dy * dy <= this.radius * this.radius;
 		}
+
+		asJSON() {
+			return {
+				type: 'point',
+				color: this.color,
+				author: this.author,
+				note: this.note,
+				x: this.x,
+				y: this.y,
+				radius: this.radius,
+			};
+		}
 	}
 
 	class PinRect extends Pin {
@@ -265,6 +280,17 @@
 		isInside(x, y) {
 			return x >= Math.min(this.p1.x, this.p2.x) && y >= Math.min(this.p1.y, this.p2.y)
 				&& x <= Math.max(this.p1.x, this.p2.x) && y <= Math.max(this.p1.y, this.p2.y);
+		}
+
+		asJSON() {
+			return {
+				type: 'rect',
+				color: this.color,
+				author: this.author,
+				note: this.note,
+				p1: this.p1,
+				p2: this.p2,
+			};
 		}
 	}
 
@@ -296,6 +322,16 @@
 			}
 			return result;
 		}
+
+		asJSON() {
+			return {
+				type: 'poly',
+				color: this.color,
+				author: this.author,
+				note: this.note,
+				points: this.points,
+			};
+		}
 	}
 
 	export default {
@@ -309,6 +345,7 @@
 			src: String,
 			imageWidth: {type: Number, default: 0, required: true},
 			imageHeight: {type: Number, default: 0, required: true},
+			saved_pins: {type: Array, default: [], required: false},
 		},
 
 		data() {
@@ -326,13 +363,13 @@
 				show_add_note: false,
 
 				pins: [
-					new PinPoint(330, 90, 10, '#000000', 'Root', "I don't like the blue sky. Let's make it purple.", this.pinClicked),
-					new PinPoint(405, 512, 10, pin_color, 'Root', 'This guy got a cool hat', this.pinClicked),
-					new PinRect({x: 520, y: 120}, {x: 660, y: 420}, '#FCC400', 'Root', 'Pretty cool skyscraper', this.rectClicked),
-					new PinPoly([
-							{x: 310, y: 410}, {x: 310, y: 385}, {x: 291, y: 367}, {x: 290, y: 330}, {x: 312, y: 304}, {x: 353, y: 304},
-							{x: 372, y: 328}, {x: 371, y: 368}, {x: 353, y: 385}, {x: 353, y: 411}],
-						10, '#ffffff', 'Root', "This is Vegas, babe", this.rectClicked),
+					// new PinPoint(330, 90, 10, '#000000', 'Root', "I don't like the blue sky. Let's make it purple.", this.pinClicked),
+					// new PinPoint(405, 512, 10, pin_color, 'Root', 'This guy got a cool hat', this.pinClicked),
+					// new PinRect({x: 520, y: 120}, {x: 660, y: 420}, '#FCC400', 'Root', 'Pretty cool skyscraper', this.rectClicked),
+					// new PinPoly([
+					// 		{x: 310, y: 410}, {x: 310, y: 385}, {x: 291, y: 367}, {x: 290, y: 330}, {x: 312, y: 304}, {x: 353, y: 304},
+					// 		{x: 372, y: 328}, {x: 371, y: 368}, {x: 353, y: 385}, {x: 353, y: 411}],
+					// 	10, '#ffffff', 'Root', "This is Vegas, babe", this.rectClicked),
 				],
 
 				ask_for_note_resolve: null,
@@ -373,6 +410,19 @@
 				}
 			},
 
+			getPins() {
+				const result = [];
+				for (let pin of this.pins) {
+					result.push(pin.asJSON());
+				}
+
+				return result;
+			},
+
+			save() {
+				this.$emit('save', this.getPins());
+			},
+
 			async onClick(evt) {
 				console.log(evt);
 
@@ -395,6 +445,7 @@
 						this.pins.push(
 							new PinPoint(evt.offsetX, evt.offsetY, 10, this.selected_color['hex'], 'Myself', text, this.pinClicked),
 						);
+						this.save();
 
 						this.render();
 
@@ -408,6 +459,7 @@
 							this.pins.push(
 								new PinRect(this.rect_p1, p2, this.selected_color['hex'], 'Myself', text, this.rectClicked),
 							);
+							this.save();
 
 							this.rect_p1 = null;
 						} else {
@@ -435,6 +487,7 @@
 								this.pins.push(
 									new PinPoly(this.poly_points, close_radius, this.selected_color['hex'], 'Myself', text, this.polyClicked),
 								);
+								this.save();
 
 								this.poly_first_point = null;
 								this.poly_points = null;
@@ -535,6 +588,7 @@
 			},
 			removeNote(pin) {
 				this.pins = this.pins.filter(x => x !== pin);
+				this.save();
 				this.render();
 			},
 
@@ -552,10 +606,35 @@
 				this.ask_for_note_resolve(this.add_note_text);
 				this.show_add_note = false;
 			},
+
+			loadPins(saved_pins) {
+				this.pins = [];
+
+				for (let sp of saved_pins) {
+					let the_pin = null;
+
+					switch (sp.type) {
+						case 'point':
+							the_pin = new PinPoint(sp.x, sp.y, sp.radius, sp.color, sp.author, sp.note, this.pinClicked);
+							break;
+						case 'rect':
+							the_pin = new PinRect(sp.p1, sp.p2, sp.color, sp.author, sp.note, this.pinClicked);
+							break;
+						case 'poly':
+							the_pin = new PinPoly(sp.points, sp.radius, sp.color, sp.author, sp.note, this.pinClicked);
+							break;
+					}
+
+					if (the_pin) {
+						this.pins.push(the_pin);
+					}
+				}
+			},
 		},
 
 		mounted() {
 			this.initCanvas(this.src);
+			this.loadPins(this.saved_pins);
 		},
 		computed: {},
 		watch: {

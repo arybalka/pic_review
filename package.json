@@ -4,12 +4,14 @@
 	"private": true,
 	"scripts": {
 		"serve": "vue-cli-service serve",
-		"build": "vue-cli-service build"
+		"build": "vue-cli-service build",
+		"watch": "vue-cli-service build --watch"
 	},
 	"dependencies": {
 		"core-js": "^3.6.4",
 		"vue": "^2.6.11",
-		"vue-color": "^2.7.1"
+		"vue-color": "^2.7.1",
+		"axios": "^0.19.2"
 	},
 	"devDependencies": {
 		"@vue/cli-plugin-babel": "^4.3.0",
